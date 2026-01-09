@@ -83,4 +83,12 @@ header {
 .trailer-button:hover {
     background-color: #c0392b;
 }
-
+.stats-banner {
+    display: flex;
+    justify-content: space-around;
+    background: rgba(57, 162, 65, 0.8);
+    color: #fff;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+}

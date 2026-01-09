@@ -1,25 +1,24 @@
 from storage import movie_storage_sql as storage
 import sys
 
+
 def command_generate_website():
-    """Erstellt die index.html basierend auf dem Design-Template."""
+    """Erstellt die index.html und füllt alle Platzhalter inklusive Statistiken."""
     movies = storage.list_movies()
+    stats = storage.get_stats()  # Holt total, average, median, best, worst
+
     if not movies:
         print("Keine Filme zum Generieren vorhanden.")
         return
 
+    # 1. Movie Grid HTML bauen
     movie_grid_html = ""
     for title, data in movies.items():
-        # 1. Fallback Bild Logik
         poster_url = data['poster']
         if not poster_url or poster_url == "N/A":
-            poster_url = "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300&h=450&auto=format&fit=crop"
+            poster_url = ("https://images.unsplash.com/"
+                          "photo-1594909122845-11baa439b7bf?q=80&w=300&h=450&auto=format&fit=crop")
 
-        # 2. Trailer-Link generieren
-        search_query = f"{title} {data['year']} official trailer".replace(" ", "+")
-        trailer_url = f"https://www.youtube.com/results?search_query={search_query}"
-
-        # 3. HTML Block bauen (nur einmal!)
         movie_html = f"""
         <div class="movie-card">
             <img src="{poster_url}" alt="Poster">
@@ -27,72 +26,125 @@ def command_generate_website():
                 <h3>{title}</h3>
                 <div class="rating">{data['rating']}</div>
                 <p style="color: #888; font-size: 0.9em;">{data['year']}</p>
-                <br>
-                <a href="{trailer_url}" target="_blank" class="trailer-button">Trailer anschauen</a>
             </div>
         </div>
         """
-        # 4. Zum Grid hinzufügen
         movie_grid_html += movie_html
 
     try:
+        # 2. Template laden
         with open("_static/index_template.html", "r", encoding="utf-8") as file:
             template_content = file.read()
 
+        # 3. ALLE Platzhalter ersetzen
         final_html = template_content.replace("__TEMPLATE_TITLE__", "Meine Movie App")
         final_html = final_html.replace("__TEMPLATE_MOVIE_GRID__", movie_grid_html)
 
+        # Statistiken einfügen (Wichtig: Werte in Strings umwandeln!)
+        final_html = final_html.replace("__TOTAL_MOVIES__", str(stats['total']))
+        final_html = final_html.replace("__AVG_RATING__", str(stats['average']))
+        final_html = final_html.replace("__MEDIAN_RATING__", str(stats['median']))
+
+        # 4. In index.html speichern
         with open("index.html", "w", encoding="utf-8") as file:
             file.write(final_html)
 
-        print("✨ Website wurde erfolgreich mit Trailer-Links generiert!")
+        print("✨ Website wurde erfolgreich aktualisiert!")
     except Exception as e:
         print(f"Fehler beim Generieren: {e}")
 
-def command_statistics():
-    """Zeigt die Film-Statistiken an."""
-    stats = storage.get_stats()
-    if stats["total"] == 0:
-        print("Keine Daten für Statistiken verfügbar.")
-        return
 
-    print("\n--- FILM STATISTIKEN ---")
-    print(f"Gesamtanzahl der Filme: {stats['total']}")
-    print(f"Durchschnittliche Bewertung: ⭐ {stats['average']}")
-    print(f"Spitzenreiter: {stats['best_movie']} (Rating: {stats['best_rating']})")
-    print("--------------------------")
+def command_statistics():
+    s = storage.get_stats()
+    if s["total"] == 0: return print("Keine Filme.")
+    print(f"\n--- STATISTIKEN ---")
+    print(f"Filme: {s['total']} | Schnitt: {s['average']} | Median: {s['median']}")
+    print(f"Bester: {s['best'][0]} ({s['best'][1]})")
+    print(f"Schlechtester: {s['worst'][0]} ({s['worst'][1]})")
+
 
 def main():
+    # Hier wird die Funktion aufgerufen, die vorher den Fehler verursacht hat
+
+
     while True:
-        print("\n--- MOVIE DATABASE MENU ---")
+        print("\n--- MOVIE APP MENU ---")
         print("1. Filme auflisten")
-        print("2. Film hinzufügen (API)")
+        print("2. Filme Einfügen")
         print("3. Film löschen")
-        print("5. Statistiken anzeigen")
+        print("4. Film aktualisieren")  # NEU
+        print("5. Statistiken")
+        print("6. Film suchen")  # NEU
+        print("7. Sortieren nach Rating")  # NEU
         print("9. Webseite generieren")
         print("0. Beenden")
 
-        choice = input("\nWähle eine Option: ")
+        choice = input("\n Wähle eine Option: ")
 
         if choice == "1":
             movies = storage.list_movies()
             for title, data in movies.items():
                 print(f"🎬 {title} - {data['rating']} ({data['year']})")
+
         elif choice == "2":
             title = input("Film-Titel eingeben: ")
             storage.add_movie_via_api(title)
+
         elif choice == "3":
             title = input("Welchen Film löschen? ")
-            storage.delete_movie(title)
-        elif choice == "5":
-            command_statistics()
+            # 1. Löschen in der Datenbank und Ergebnis prüfen
+            # Wir nutzen den Rückgabewert (True/False) deiner storage.delete_movie Funktion
+            if storage.delete_movie(title):
+                print(f"Der Film '{title}' wurde erfolgreich aus der DB gelöscht.")
+
+                # 2. Webseite sofort neu generieren
+                command_generate_website()
+                print("Die Webseite wurde automatisch aktualisiert.")
+            else:
+                # Falls rowcount 0 war (Film nicht gefunden)
+                print(f"Fehler: Der Film '{title}' wurde in der Datenbank nicht gefunden.")
+
+        elif choice == "4":
+            title = input("Welchen Film möchtest du aktualisieren? ")
+            try:
+                new_rating = float(input("Gib das neue Rating ein (z.B. 8.5): "))
+
+                # 1. Update in der Datenbank
+                if storage.update_movie(title, new_rating):
+                    print(f" Rating für '{title}' wurde aktualisiert.")
+
+                    # 2. WICHTIG: Webseite sofort neu bauen!
+                    command_generate_website()
+                    print(" Webseite wurde mit dem neuen Rating aktualisiert.")
+                else:
+                    print(f" Fehler: Film '{title}' wurde nicht gefunden.")
+
+            except ValueError:
+                print(" Bitte gib eine gültige Zahl für das Rating ein.")
+
+        elif choice == "6":
+            term = input("Suche nach Anfangsbuchstabe der TITLE DES FILMS: ")
+            results = storage.search_movies(term)
+            if results:
+                # Optional: Anzahl der Treffer anzeigen
+                print(f"\nEs wurden {len(results)} Filme gefunden:")
+                for row in results:
+                    print(f" 🎬 {row[0]} ({row[1]}) - Rating: {row[2]}")
+            else:
+                print(f"Keine passenden Filme für '{term}' gefunden.")
+
+        elif choice == "7":
+            # WICHTIG: Hier muss das Argument True übergeben werden!
+            movies = storage.list_movies(sort_by_rating=True)
+            print("\n--- FILME NACH BEWERTUNG (Beste zuerst) ---")
+            for title, data in movies.items():
+                print(f"⭐ {data['rating']} | {title}")
+
         elif choice == "9":
             command_generate_website()
+
         elif choice == "0":
-            print("Bye!")
-            sys.exit()
-        else:
-            print("Ungültige Wahl.")
+            break
 
 if __name__ == "__main__":
     main()
