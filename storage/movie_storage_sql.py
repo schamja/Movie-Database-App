@@ -1,103 +1,95 @@
 import os
-import statistics
 import requests
+import statistics
+import random
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-# SICHERHEIT: API Key aus Umgebungsvariable
-API_KEY = os.getenv("OMDB_API_KEY", "dd74a077")
+# 1. SECURITY: Lädt den API-Key aus der .env Datei
+load_dotenv()
+API_KEY = os.getenv("OMDB_API_KEY")
+
+# Datenbank-Setup
 DB_PATH = os.path.join("data", "movies.db")
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
 
+def list_movies(sort_by_rating=False):
+    """Gibt alle Filme als Dictionary zurück."""
+    order = "CAST(rating AS FLOAT) DESC" if sort_by_rating else "title ASC"
+
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(text(f"SELECT title, year, rating, poster_url FROM movies ORDER BY {order}"))
+            return {row[0]: {"year": row[1], "rating": row[2], "poster": row[3]} for row in result}
+    except Exception as e:
+        print(f"Fehler beim Auflisten: {e}")
+        return {}
+
+
 def add_movie_via_api(title):
-    """Sucht Film in API und speichert ihn in der DB."""
+    """Fügt Film via OMDb API hinzu."""
+    if not API_KEY:
+        print("Fehler: Kein API_KEY in .env gefunden!")
+        return False
     url = f"http://www.omdbapi.com/?apikey={API_KEY}&t={title}"
     try:
-        response = requests.get(url, timeout=5)
-        data = response.json()
-
+        data = requests.get(url).json()
         if data.get("Response") == "False":
-            print(f"Fehler: {data.get('Error')}")
+            print(f"API Fehler: {data.get('Error')}")
             return False
 
-        extracted_data = {
-            "title": data.get("Title"),
-            "year": int(data.get("Year")[:4]) if data.get("Year") else 0,
-            "rating": float(data.get("imdbRating")) if data.get("imdbRating") != "N/A" else 0.0,
-            "poster": data.get("Poster")
+        movie_data = {
+            "t": data.get("Title"),
+            "y": int(data.get("Year")[:4]) if data.get("Year") else 0,
+            "r": float(data.get("imdbRating")) if data.get("imdbRating") != "N/A" else 0.0,
+            "p": data.get("Poster")
         }
-
         with engine.connect() as connection:
-            connection.execute(text("""
-                INSERT OR REPLACE INTO movies (title, year, rating, poster_url)
-                VALUES (:title, :year, :rating, :poster)
-            """), extracted_data)
-            connection.commit()
-
-        print(f"'{extracted_data['title']}' erfolgreich hinzugefügt!")
+            with connection.begin():
+                connection.execute(text("""
+                    INSERT OR REPLACE INTO movies (title, year, rating, poster_url)
+                    VALUES (:t, :y, :r, :p)
+                """), movie_data)
         return True
     except Exception as e:
-        print(f" API-Fehler: {e}")
+        print(f"Fehler: {e}")
         return False
 
-
-def get_stats():
-    """Berechnet Statistiken inkl. Median und Worst Movie."""
-    with engine.connect() as connection:
-        res = connection.execute(text("SELECT title, rating FROM movies ORDER BY rating ASC")).fetchall()
-
-    if not res:
-        return None
-
-    ratings = [row[1] for row in res]
-    return {
-        "total": len(ratings),
-        "average": round(statistics.mean(ratings), 2),
-        "median": round(statistics.median(ratings), 2),
-        "best_movie": res[-1][0],
-        "best_rating": res[-1][1],
-        "worst_movie": res[0][0],
-        "worst_rating": res[0][1]
-    }
-
-
-# Stelle sicher, dass auch update_movie, search_movies und delete_movie hier stehen!
 
 def delete_movie(title):
-    try:
-        with engine.connect() as connection:
-            # .begin() startet eine Transaktion und macht das commit() automatisch
-            with connection.begin():
-                result = connection.execute(
-                    text("DELETE FROM movies WHERE title = :t"),
-                    {"t": title}
-                )
-                count = result.rowcount
-                return count > 0
-    except exc.SQLAlchemyError as e:
-        print(f"SQL-Fehler aufgetreten: {e}")
-        return False
+    """Löscht einen Film."""
+    with engine.connect() as connection:
+        with connection.begin():
+            result = connection.execute(text("DELETE FROM movies WHERE title = :t"), {"t": title})
+            return result.rowcount > 0
+
 
 def update_movie(title, rating):
+    """AKTUALISIERT das Rating eines Films (Behebt deinen Fehler)."""
     with engine.connect() as connection:
-        result = connection.execute(text("UPDATE movies SET rating = :r WHERE title = :t"),
-                                    {"r": rating, "t": title})
-        connection.commit()
-        return result.rowcount > 0
+        with connection.begin():
+            result = connection.execute(text("UPDATE movies SET rating = :r WHERE title = :t"),
+                                        {"r": rating, "t": title})
+            return result.rowcount > 0
+
 
 def get_stats():
+    """Berechnet Statistiken."""
     with engine.connect() as connection:
-        res = connection.execute(text("SELECT title, rating FROM movies "
-                                      "ORDER BY rating ASC")).fetchall()
-    if not res: return None
+        res = connection.execute(text("SELECT title, rating FROM movies ORDER BY rating ASC")).fetchall()
+    if not res:
+        return {"total": 0, "average": 0, "median": 0, "best": ["N/A", 0], "worst": ["N/A", 0]}
+
     ratings = [row[1] for row in res]
     return {
         "total": len(ratings),
         "average": round(statistics.mean(ratings), 2),
         "median": round(statistics.median(ratings), 2),
-        "best_movie": res[-1][0], "best_rating": res[-1][1],
-        "worst_movie": res[0][0], "worst_rating": res[0][1]
+        "best": [res[-1][0], res[-1][1]],
+        "worst": [res[0][0], res[0][1]]
     }
+
 
 # Sicherere Variante für alle Datenbanken:
 def search_movies(term):
@@ -108,15 +100,11 @@ def search_movies(term):
         ).fetchall()
 
 
-def list_movies(sort_by_rating=False):
-    # CAST sorgt dafür, dass 9.1 wirklich größer als 9.0 ist
-    order = "CAST(rating AS FLOAT) DESC" if sort_by_rating else "title ASC"
+def get_random_movie():
+    """RANDOM FEATURE: Wählt zufälligen Film (Anforderung Tutorin)."""
+    movies = list_movies()
+    if not movies:
+        return None
 
-    with engine.connect() as connection:
-        # Wir nutzen f-string nur für den ORDER-Teil (da Spaltennamen nicht als Parameter gehen)
-        result = connection.execute(text(f"SELECT title, year, rating, poster_url FROM movies "
-                                         f"ORDER BY {order}"))
-
-        # Wir geben eine Liste von Dicts oder ein OrderedDict zurück,
-        # um die Reihenfolge sicher zu erhalten
-        return {row[0]: {"year": row[1], "rating": row[2], "poster": row[3]} for row in result}
+    t = random.choice(list(movies.keys()))
+    return t, movies[t]

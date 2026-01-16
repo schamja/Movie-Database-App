@@ -1,5 +1,4 @@
 from storage import movie_storage_sql as storage
-import sys
 
 
 def command_generate_website():
@@ -56,8 +55,10 @@ def command_generate_website():
 
 def command_statistics():
     s = storage.get_stats()
-    if s["total"] == 0: return print("Keine Filme.")
-    print(f"\n--- STATISTIKEN ---")
+    if s["total"] == 0:
+        return print("Keine Filme.")
+
+    print("\n--- STATISTIKEN ---")
     print(f"Filme: {s['total']} | Schnitt: {s['average']} | Median: {s['median']}")
     print(f"Bester: {s['best'][0]} ({s['best'][1]})")
     print(f"Schlechtester: {s['worst'][0]} ({s['worst'][1]})")
@@ -72,10 +73,11 @@ def main():
         print("1. Filme auflisten")
         print("2. Filme Einfügen")
         print("3. Film löschen")
-        print("4. Film aktualisieren")  # NEU
+        print("4. Film aktualisieren")
         print("5. Statistiken")
-        print("6. Film suchen")  # NEU
-        print("7. Sortieren nach Rating")  # NEU
+        print("6. Film suchen")
+        print("7. Sortieren nach Rating")
+        print("8. Zufallsfilm") # NEU
         print("9. Webseite generieren")
         print("0. Beenden")
 
@@ -139,6 +141,14 @@ def main():
             print("\n--- FILME NACH BEWERTUNG (Beste zuerst) ---")
             for title, data in movies.items():
                 print(f"⭐ {data['rating']} | {title}")
+
+        elif choice == "8":
+            result = storage.get_random_movie()
+            if result:
+                title, data = result
+                print(f"Zufallsfilm: {title} ({data['year']}) - Bewertung: {data['rating']}")
+            else:
+                print("Keine Filme gefunden.")
 
         elif choice == "9":
             command_generate_website()
