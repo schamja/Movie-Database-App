@@ -67,6 +67,7 @@ def delete_movie(title):
 
 def update_movie(title, rating):
     """AKTUALISIERT das Rating eines Films (Behebt deinen Fehler)."""
+
     with engine.connect() as connection:
         with connection.begin():
             result = connection.execute(text("UPDATE movies SET rating = :r WHERE title = :t"),

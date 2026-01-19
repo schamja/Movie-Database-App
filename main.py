@@ -1,4 +1,4 @@
-from storage import movie_storage_sql as storage
+import storage.movie_storage_sql as storage
 
 
 def command_generate_website():
@@ -53,108 +53,107 @@ def command_generate_website():
         print(f"Fehler beim Generieren: {e}")
 
 
+def command_list_movies():
+    """Listet alle Filme aus der Datenbank auf."""
+    movies = storage.list_movies()
+    if not movies:
+        print("Die Datenbank ist leer.")
+        return
+    for title, data in movies.items():
+        print(f"🎬 {title} - {data['rating']} ({data['year']})")
+
+def command_add_movie():
+    """Fragt nach einem Titel und fügt den Film via API hinzu."""
+    title = input("Film-Titel eingeben: ")
+    if storage.add_movie_via_api(title):
+        print(f"✅ '{title}' wurde erfolgreich hinzugefügt.")
+        command_generate_website()
+    else:
+        print(f"❌ Fehler: Film '{title}' konnte nicht gefunden werden.")
+
+def command_delete_movie():
+    """Löscht einen Film nach Benutzereingabe."""
+    title = input("Welchen Film möchtest du löschen? ")
+    if storage.delete_movie(title):
+        print(f"✅ '{title}' wurde gelöscht.")
+        command_generate_website()
+    else:
+        print(f"❌ Fehler: Film '{title}' nicht gefunden.")
+
+def command_update_movie():
+    """Modularisierte Option 4: Aktualisiert das Rating eines Films."""
+    title = input("Welchen Film möchtest du aktualisieren? ")
+    try:
+        new_rating = float(input("Gib das neue Rating ein (z.B. 8.5): "))
+        if storage.update_movie(title, new_rating):
+            print(f"✅ Rating für '{title}' wurde aktualisiert.")
+            command_generate_website()
+        else:
+            print(f"❌ Fehler: Film '{title}' wurde nicht gefunden.")
+    except ValueError:
+        print("⚠ Bitte gib eine gültige Zahl ein.")
+
 def command_statistics():
+    """Modularisierte Option 5: Zeigt Film-Statistiken an."""
     s = storage.get_stats()
     if s["total"] == 0:
-        return print("Keine Filme.")
-
+        print("Keine Filme für Statistiken vorhanden.")
+        return
     print("\n--- STATISTIKEN ---")
     print(f"Filme: {s['total']} | Schnitt: {s['average']} | Median: {s['median']}")
     print(f"Bester: {s['best'][0]} ({s['best'][1]})")
     print(f"Schlechtester: {s['worst'][0]} ({s['worst'][1]})")
 
+def command_search_movies():
+    """Modularisierte Option 6: Sucht Filme nach Titeln."""
+    term = input("Suche nach dem Titel des Films: ")
+    results = storage.search_movies(term)
+    if results:
+        print(f"\nGefundene Filme ({len(results)}):")
+        for row in results:
+            print(f" 🎬 {row[0]} ({row[1]}) - Rating: {row[2]}")
+    else:
+        print(f"Keine Treffer für '{term}'.")
+
+def command_sort_by_rating():
+    """Modularisierte Option 7: Sortiert Filme nach Bewertung."""
+    movies = storage.list_movies(sort_by_rating=True)
+    print("\n--- FILME NACH BEWERTUNG (Beste zuerst) ---")
+    for title, data in movies.items():
+        print(f"⭐ {data['rating']} | {title}")
+
+def command_random_movie():
+    """Modularisierte Option 8: Zeigt einen Zufallsfilm an."""
+    result = storage.get_random_movie()
+    if result:
+        title, data = result
+        print(f"🎲 Zufallsempfehlung: {title} ({data['year']}) - Rating: {data['rating']}")
+    else:
+        print("Datenbank ist leer.")
+
+
 
 def main():
-    # Hier wird die Funktion aufgerufen, die vorher den Fehler verursacht hat
-
-
+    """Hauptmenü-Schleife der App."""
     while True:
         print("\n--- MOVIE APP MENU ---")
-        print("1. Filme auflisten")
-        print("2. Filme Einfügen")
-        print("3. Film löschen")
-        print("4. Film aktualisieren")
-        print("5. Statistiken")
-        print("6. Film suchen")
-        print("7. Sortieren nach Rating")
-        print("8. Zufallsfilm") # NEU
-        print("9. Webseite generieren")
-        print("0. Beenden")
+        print("1. Filme auflisten\n2. Film hinzufügen\n3. Film löschen")
+        print("4. Film aktualisieren\n5. Statistiken\n6. Film suchen")
+        print("7. Sortieren nach Rating\n8. Zufallsfilm\n9. Webseite generieren\n0. Beenden")
 
-        choice = input("\n Wähle eine Option: ")
+        choice = input("\nWähle eine Option: ")
 
-        if choice == "1":
-            movies = storage.list_movies()
-            for title, data in movies.items():
-                print(f"🎬 {title} - {data['rating']} ({data['year']})")
-
-        elif choice == "2":
-            title = input("Film-Titel eingeben: ")
-            storage.add_movie_via_api(title)
-
-        elif choice == "3":
-            title = input("Welchen Film löschen? ")
-            # 1. Löschen in der Datenbank und Ergebnis prüfen
-            # Wir nutzen den Rückgabewert (True/False) deiner storage.delete_movie Funktion
-            if storage.delete_movie(title):
-                print(f"Der Film '{title}' wurde erfolgreich aus der DB gelöscht.")
-
-                # 2. Webseite sofort neu generieren
-                command_generate_website()
-                print("Die Webseite wurde automatisch aktualisiert.")
-            else:
-                # Falls rowcount 0 war (Film nicht gefunden)
-                print(f"Fehler: Der Film '{title}' wurde in der Datenbank nicht gefunden.")
-
-        elif choice == "4":
-            title = input("Welchen Film möchtest du aktualisieren? ")
-            try:
-                new_rating = float(input("Gib das neue Rating ein (z.B. 8.5): "))
-
-                # 1. Update in der Datenbank
-                if storage.update_movie(title, new_rating):
-                    print(f" Rating für '{title}' wurde aktualisiert.")
-
-                    # 2. WICHTIG: Webseite sofort neu bauen!
-                    command_generate_website()
-                    print(" Webseite wurde mit dem neuen Rating aktualisiert.")
-                else:
-                    print(f" Fehler: Film '{title}' wurde nicht gefunden.")
-
-            except ValueError:
-                print(" Bitte gib eine gültige Zahl für das Rating ein.")
-
-        elif choice == "6":
-            term = input("Suche nach Anfangsbuchstabe der TITLE DES FILMS: ")
-            results = storage.search_movies(term)
-            if results:
-                # Optional: Anzahl der Treffer anzeigen
-                print(f"\nEs wurden {len(results)} Filme gefunden:")
-                for row in results:
-                    print(f" 🎬 {row[0]} ({row[1]}) - Rating: {row[2]}")
-            else:
-                print(f"Keine passenden Filme für '{term}' gefunden.")
-
-        elif choice == "7":
-            # WICHTIG: Hier muss das Argument True übergeben werden!
-            movies = storage.list_movies(sort_by_rating=True)
-            print("\n--- FILME NACH BEWERTUNG (Beste zuerst) ---")
-            for title, data in movies.items():
-                print(f"⭐ {data['rating']} | {title}")
-
-        elif choice == "8":
-            result = storage.get_random_movie()
-            if result:
-                title, data = result
-                print(f"Zufallsfilm: {title} ({data['year']}) - Bewertung: {data['rating']}")
-            else:
-                print("Keine Filme gefunden.")
-
-        elif choice == "9":
-            command_generate_website()
-
-        elif choice == "0":
-            break
+        if choice == "1": command_list_movies()
+        elif choice == "2": command_add_movie()
+        elif choice == "3": command_delete_movie()
+        elif choice == "4": command_update_movie()
+        elif choice == "5": command_statistics()
+        elif choice == "6": command_search_movies()
+        elif choice == "7": command_sort_by_rating()
+        elif choice == "8": command_random_movie()
+        elif choice == "9": command_generate_website()
+        elif choice == "0": break
+        else: print("Ungültige Eingabe.")
 
 if __name__ == "__main__":
     main()
